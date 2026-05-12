@@ -270,30 +270,42 @@ const players = {};
 let curAudio = null, curIdx = 0, popIdx = 0, vol = 0.6, playing = false, progTimer = null;
 
 function getPlayer(key) {
-  if (!players[key]) { var a = new Audio(AUDIO_DATA[key]); a.volume = 1.0; a.preload = "auto"; players[key] = a; }
+  if (!players[key]) {
+    var a = new Audio(AUDIO_DATA[key]);
+    a.volume = 1.0;
+    a.preload = "auto";
+    // When song ends → auto-play next song in sequence (skip happy_bday at index 10)
+    a.addEventListener('ended', function() {
+      var nextIdx = (curIdx + 1) % 10; // loop through songs 0–9 only
+      playSongIdx(nextIdx, false);
+    });
+    players[key] = a;
+  }
   return players[key];
 }
 function playSongIdx(idx, loop) {
-  stopMusic(false);
-  if (typeof loop === 'undefined') loop = true;
+  if (curAudio) { curAudio.pause(); curAudio.currentTime = 0; }
+  clearInterval(progTimer);
   curIdx = idx;
-  var s = SONGS[idx]; if (!s) return;
+  var s = SONGS[idx];
+  if (!s) return;
   var a = getPlayer(s.key);
-  a.loop = loop; a.currentTime = 0; a.volume = vol;
-  // Force unmute and play with multiple retries for browser autoplay policy
+  a.loop = false;
+  a.currentTime = 0;
+  a.volume = vol;
   a.muted = false;
-  var playAttempt = a.play();
-  if (playAttempt !== undefined) {
-    playAttempt.then(function() {
-      console.log("Playing: " + s.name);
+  var p = a.play();
+  if (p !== undefined) {
+    p.then(function() {
+      playing = true; curAudio = a;
+      updateBar(s); vizStart(); startProg(a);
     }).catch(function(e) {
-      console.warn("Autoplay blocked, retrying on next click...", e);
-      // Store pending song, will play on next user interaction
-      window._pendingSong = idx;
+      window._pendingSong = idx; curAudio = a;
     });
+  } else {
+    playing = true; curAudio = a;
+    updateBar(s); vizStart(); startProg(a);
   }
-  curAudio = a; playing = true;
-  updateBar(s); vizStart(); startProg(a);
 }
 function stopMusic(ui) {
   if (typeof ui === 'undefined') ui = true;
@@ -393,11 +405,13 @@ function openCard(card){
   document.getElementById('popSName').textContent='🎵 '+song.name+' — '+song.artist;
   document.getElementById('popSName').style.color=card.dataset.c;
   document.getElementById('popPBtn').style.background=card.dataset.c;
-  document.getElementById('popPBtn').textContent='▶ Play';
+  document.getElementById('popPBtn').textContent='⏸ Pause';
   document.getElementById('popHearts').textContent=card.dataset.h;
   document.getElementById('popupBox').style.setProperty('--pbg',card.dataset.g);
   document.getElementById('popupBox').style.setProperty('--pc',card.dataset.c);
   document.getElementById('popup').classList.add('show');
+  // ✅ Play THIS card's song immediately on open
+  playSongIdx(si, false);
   confetti();
   var m={10:'10 reasons! 💙 Keep going',25:"25 down! ✨",50:'Halfway! 50 reasons 💜',75:'75 reasons! 💛',100:'All 100! Tinku loves you 🎉💙🦛'};
   if(m[opened.size]) toast(m[opened.size]);
